@@ -1,0 +1,70 @@
+# Server Information
+server:
+  address: "0.0.0.0:3050"
+
+# Database Information
+database:
+  # Possible types: "mssql", "mysql", "sqlite3", "postgres"
+  type: "mysql"
+  # DSN (Database Source Name)
+  # Please visit (https://gorm.io/docs/connecting_to_the_database.html#Supported-Databases) for DSN structure
+  # MySQL Example:
+  # dsn: "username:password@tcp(localhost)/database?charset=utf8mb4&parseTime=True"
+  dsn: "linkr:linkr@tcp(10.6.6.66)/linkr?charset=utf8mb4&parseTime=True"
+
+# Provides options for generating random URLs
+generate:
+  # The length of the generated random URLs
+  length: 6
+
+  # Confused Letters and Numerals - From https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3541865/#t1-ptj3712663
+  # the default combination of `allowed_chars` and `length` provides a capability of generating 27,907,200 unique combinations, with confused letters and numerals already removed for your convenience.
+  allowed_chars: "abdfhjkprtuvwxy34569"
+
+  # avoid generating not-appropriate phrases. expand this list based on your needs
+  banned_phrases:
+    - "fuck"
+    - "shit"
+    - "cock"
+    - "anal"
+    - "porn"
+    - "admin"
+
+# Option to provide API compatibility with other services
+# Giving you an opportunity to use apps or extensions of the pre-built ecosystems (such as YOURLS).
+api_compatibility:
+  # Support the API of YOURLS (https://github.com/YOURLS/YOURLS)
+  # The API key will be generated and displayed through the admin panel
+  yourls: false
+
+# Option to notify you when someone visit a specific link
+notification:
+  # == Gotify (https://gotify.net) - a simple server for sending and receiving messages == #
+  gotify:
+    enabled: false
+    # Your Gotify server url. e.g. https://example.com
+    endpoint: "<GOTIFY_ENDPOINT_URL>"
+    application_key: "<GOTIFY_APPLICATION_KEY>"
+
+  # == ServerChan (https://sc.ftqq.com) - Free notification with WeChat == #
+  server_chan:
+    enabled: false
+    api_key: "<SERVER_CHAN_API_KEY>"
+
+  # == Telegram (https://telegram.org) - Free messaging app == #
+  telegram:
+    enabled: false
+    # Register one from https://core.telegram.org/bots#3-how-do-i-create-a-bot
+    bot_token: "<TELEGRAM_BOT_TOKEN>"
+    # Get your own chat ID from @get_id_bot
+    chat_id: 42
+
+  # == Webhook (advanced) - POST visitor's detailed information to a URL == #
+  webhooks:
+    enabled: false
+    urls:
+      - "https://example.com/webhook/endpoint/1"
+      - "https://example.com/webhook/endpoint/2"
+      - "https://example.com/webhook/endpoint/3"
+
+
