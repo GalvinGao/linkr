@@ -6,6 +6,7 @@ import (
 	"github.com/GalvinGao/linkr/notify/server_chan"
 	"github.com/GalvinGao/linkr/notify/telegram"
 	"github.com/GalvinGao/linkr/notify/webhook"
+	"github.com/dchest/uniuri"
 	"github.com/jinzhu/configor"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/mssql"
@@ -18,7 +19,7 @@ import (
 	"reflect"
 )
 
-var db *gorm.DB
+var DB *gorm.DB
 
 func main() {
 	var config Config
@@ -26,17 +27,17 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	db, err := gorm.Open(config.Database.Type, config.Database.DSN)
+	DB, err = gorm.Open(config.Database.Type, config.Database.DSN)
 	if err != nil {
 		panic(err)
 	}
 
-	db.AutoMigrate(&User{}, &WebToken{}, &Token{}, &Link{}, &LinkRecord{})
+	DB.AutoMigrate(&User{}, &Token{}, &Link{}, &LinkRecord{})
 
 	// process the service providers
 	v := reflect.ValueOf(config.Notification)
 	t := reflect.TypeOf(config.Notification)
-	providers := make([]notify.ServiceProvider, v.NumField())
+	var providers []notify.ServiceProvider
 
 	// enumerates through the notification providers in the config file
 	for i := 0; i < v.NumField(); i++ {
@@ -72,6 +73,20 @@ func main() {
 	// router bindings
 	e := echo.New()
 
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowCredentials: true,
+		AllowHeaders: []string{
+			echo.HeaderAuthorization,
+			echo.HeaderAccept,
+		},
+		AllowMethods: []string{
+			http.MethodGet,
+			http.MethodPut,
+			http.MethodPost,
+			http.MethodDelete,
+		},
+	}))
+
 	// homepage
 	e.GET("/", func(c echo.Context) error {
 		return c.File("home.html")
@@ -83,25 +98,24 @@ func main() {
 
 	// admin control panel apis
 	adminApi := admin.Group("/api")
-	adminApi.Use(middleware.CORS())
 	adminApi.POST("/login", adminLoginHandler)
 
 	// public api group
 	api := e.Group("/api")
-	api.Use(middleware.CORS())
 	api.Use(middleware.KeyAuth(func(s string, c echo.Context) (bool, error) {
 		var token Token
-		db.Where("token = ?", s).First(&token)
+		DB.Where("token = ?", s).First(&token)
 		if s == token.Token {
 			return true, nil
 		}
-		var webToken WebToken
-		db.Where("web_token = ?", s).First(&webToken)
-		if s == webToken.Token {
+		var webTokenUser User
+		DB.Where("web_token = ?", s).First(&webTokenUser)
+		if s == webTokenUser.WebToken {
 			return true, nil
 		}
-		return false, echo.NewHTTPError(http.StatusUnauthorized, "Unacceptable token")
+		return false, echo.NewHTTPError(http.StatusUnauthorized, "bad token")
 	}))
+
 	api.GET("/link", queryLinkHandler)
 	api.POST("/link", createLinkHandler)
 	api.PUT("/link/:id", updateLinkHandler)
@@ -111,22 +125,43 @@ func main() {
 	e.GET("/:link", func(c echo.Context) error {
 		var result Link
 		link := c.Param("link")
-		chk := db.Where("short = ?", link).Find(&result)
+		chk := DB.Where("short_url = ?", link).Find(&result)
 		if chk.Error != nil {
 			return c.String(http.StatusInternalServerError, "internal server error")
 		}
 		if result.NotifyOnVisit {
 			go func() {
 				notifier.notify(c.Request(), notify.Extras{
-					ShortUrl: result.Short,
-					LongUrl:  result.Long,
+					ShortUrl: result.ShortURL,
+					LongUrl:  result.LongURL,
 				})
 			}()
-			return c.Redirect(http.StatusTemporaryRedirect, result.Long)
+			return c.Redirect(http.StatusTemporaryRedirect, result.LongURL)
 		} else {
-			return c.Redirect(http.StatusPermanentRedirect, result.Long)
+			return c.Redirect(http.StatusPermanentRedirect, result.LongURL)
 		}
 	})
+
+	var user User
+	var count uint
+	DB.First(&user).Count(&count)
+	if count == 0 {
+		DB.Create(&User{
+			Username: "a",
+			Password: "a",
+			WebToken: uniuri.NewLen(32),
+		})
+	}
+	/*
+		for i := 0; i < 500; i++ {
+			DB.Create(&Link{
+				ParentUserID:  1,
+				ShortURL:      uniuri.NewLen(5),
+				LongURL:       "https://example.com/link/" + uniuri.NewLen(32),
+				NotifyOnVisit: false,
+			})
+		}
+	*/
 
 	e.Logger.Fatal(e.Start(config.Server.Address))
 }

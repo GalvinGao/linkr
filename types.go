@@ -53,52 +53,48 @@ type Config struct {
 
 // User stores short link users
 type User struct {
-	UserID    uint       `gorm:"AUTO_INCREMENT,primary_key" json:"user_id"`
+	UserID    uint       `gorm:"AUTO_INCREMENT;primary_key" json:"user_id"`
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
 	DeletedAt *time.Time `gorm:"index" json:"deleted_at"`
 	Username  string     `gorm:"type:varchar(64);unique_index" json:"long"`
 	Password  string     `gorm:"type:varchar(128)" json:"password"`
-	WebToken  WebToken   `gorm:"foreignkey:WebTokenID;unique_index" json:"web_token"`
+	WebToken  string     `gorm:"type:varchar(32);unique_index" json:"web_token"`
 	Tokens    []Token    `gorm:"foreignkey:TokenID"`
 	Links     []Link     `gorm:"foreignkey:LinkID"`
 }
 
-type WebToken struct {
-	WebTokenID   uint   `gorm:"AUTO_INCREMENT,primary_key" json:"web_token_id"`
-	ParentUserID uint   `json:"parent_user_id"`
-	Token        string `gorm:"type:varchar(32);unique_index" json:"web_token"`
-}
-
 // Token stores user tokens
 type Token struct {
-	TokenID      uint      `gorm:"AUTO_INCREMENT,primary_key" json:"token_id"`
+	TokenID      uint      `gorm:"AUTO_INCREMENT;primary_key" json:"token_id"`
 	CreatedAt    time.Time `json:"created_at"`
-	ParentUserID uint      `json:"parent_user_id"`
+	ParentUserID uint      `json:"-"`
 	Token        string    `gorm:"type:varchar(32);unique_index" json:"token"`
 	Description  string    `gorm:"type:varchar(256)" json:"description"`
 }
 
 // Link defines struct for the mapping between the short link and the original (long) link
 type Link struct {
-	LinkID       uint       `gorm:"AUTO_INCREMENT,primary_key" json:"link_id"`
-	ParentUserID uint       `json:"parent_user_id"`
+	LinkID       uint       `gorm:"AUTO_INCREMENT;primary_key" json:"link_id"`
+	ParentUserID uint       `json:"-"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
-	DeletedAt    *time.Time `gorm:"index" json:"deleted_at"`
-	// Short is the short link id
-	Short string `gorm:"type:varchar(20);unique_index" json:"short"`
-	// Long is the original (long) link URI
-	Long          string       `gorm:"type:varchar(20);unique" json:"long"`
+	DeletedAt    *time.Time `gorm:"index" json:"-"`
+	// ShortURL is the short link id
+	ShortURL string `gorm:"type:varchar(20);unique_index" json:"short_url"`
+	// LongURL is the original (long) link URI
+	// Due to HTTP standards, the maximum length of a URL can be as long as 2048 chars
+	// VARCHAR does not allow us to do that. Therefore a `text` field is required
+	LongURL       string       `gorm:"type:text(2048)" json:"long_url"`
 	NotifyOnVisit bool         `json:"notify_on_visit"`
-	Records       []LinkRecord `gorm:"foreignkey:RecordID"`
+	Records       []LinkRecord `gorm:"foreignkey:RecordID" json:"-"`
 }
 
 // LinkRecord records all visits to the links
 type LinkRecord struct {
-	RecordID         uint      `gorm:"AUTO_INCREMENT,primary_key" json:"record_id"`
+	RecordID         uint      `gorm:"AUTO_INCREMENT;primary_key" json:"record_id"`
 	CreatedAt        time.Time `json:"created_at"`
-	ParentLinkID     uint      `json:"parent_link_id"`
+	ParentLinkID     uint      `json:"-"`
 	Referer          string    `json:"referer"`
 	EncodedUserAgent uint      `json:"user_agent"`
 }
@@ -114,4 +110,11 @@ type AdminLoginForm struct {
 	Username          string `form:"username"`
 	PasswordKey       string `form:"key"`
 	EncryptedPassword string `form:"password"`
+}
+
+type QueryLinkParams struct {
+	Page      int    `query:"page"`
+	Limit     int    `query:"limit"`
+	SortField string `query:"sort_field"`
+	SortOrder string `query:"sort_order"`
 }

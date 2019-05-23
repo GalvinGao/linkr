@@ -3,17 +3,22 @@ import Vuex from 'vuex'
 
 Vue.use(Vuex)
 
+const emptyCredentials = {
+  loggedIn: false,
+  username: "",
+  token: ""
+}
+
 export default new Vuex.Store({
   state: {
-    authentication: {
-      loggedIn: false,
-      username: "",
-      token: ""
-    }
+    credentials: emptyCredentials
   },
   mutations: {
-    updateAuthenticationState(state) {
-      this.state.authentication = state
+    updateAuth(state, newState) {
+      state.credentials = newState
+    },
+    logout(state) {
+      state.credentials = emptyCredentials
     }
   },
   actions: {
