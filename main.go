@@ -6,7 +6,7 @@ import (
 	"github.com/GalvinGao/linkr/notify/server_chan"
 	"github.com/GalvinGao/linkr/notify/telegram"
 	"github.com/GalvinGao/linkr/notify/webhook"
-	"github.com/dchest/uniuri"
+	"github.com/getsentry/raven-go"
 	"github.com/jinzhu/configor"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/mssql"
@@ -14,12 +14,16 @@ import (
 	_ "github.com/jinzhu/gorm/dialects/postgres"
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
 	"github.com/labstack/echo"
-	"github.com/labstack/echo/middleware"
+	"gopkg.in/go-playground/validator.v9"
 	"net/http"
 	"reflect"
 )
 
 var DB *gorm.DB
+
+func (cv *CustomValidator) Validate(i interface{}) error {
+	return cv.validator.Struct(i)
+}
 
 func main() {
 	var config Config
@@ -32,7 +36,13 @@ func main() {
 		panic(err)
 	}
 
-	DB.AutoMigrate(&User{}, &Token{}, &Link{}, &LinkRecord{})
+	if config.Logging.Sentry.Enabled {
+		if err := raven.SetDSN(config.Logging.Sentry.DSN); err != nil {
+			panic(err)
+		}
+	}
+
+	DB.AutoMigrate(&Token{}, &Link{}, &LinkRecord{})
 
 	// process the service providers
 	v := reflect.ValueOf(config.Notification)
@@ -73,53 +83,37 @@ func main() {
 	// router bindings
 	e := echo.New()
 
-	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowCredentials: true,
-		AllowHeaders: []string{
-			echo.HeaderAuthorization,
-			echo.HeaderAccept,
-		},
-		AllowMethods: []string{
-			http.MethodGet,
-			http.MethodPut,
-			http.MethodPost,
-			http.MethodDelete,
-		},
-	}))
+	e.Validator = &CustomValidator{validator: validator.New()}
 
 	// homepage
 	e.GET("/", func(c echo.Context) error {
 		return c.File("home.html")
 	})
 
-	// admin control panel
-	admin := e.Group("/admin")
-	admin.GET("", adminPanelHandler)
-
-	// admin control panel apis
-	adminApi := admin.Group("/api")
-	adminApi.POST("/login", adminLoginHandler)
-
-	// public api group
-	api := e.Group("/api")
-	api.Use(middleware.KeyAuth(func(s string, c echo.Context) (bool, error) {
-		var token Token
-		DB.Where("token = ?", s).First(&token)
-		if s == token.Token {
-			return true, nil
+	e.POST("/__link", func(c echo.Context) error {
+		form := new(NewLinkForm)
+		if err := c.Bind(form); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "bad form")
 		}
-		var webTokenUser User
-		DB.Where("web_token = ?", s).First(&webTokenUser)
-		if s == webTokenUser.WebToken {
-			return true, nil
+		if err = c.Validate(form); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "bad form")
 		}
-		return false, echo.NewHTTPError(http.StatusUnauthorized, "bad token")
-	}))
 
-	api.GET("/link", queryLinkHandler)
-	api.POST("/link", createLinkHandler)
-	api.PUT("/link/:id", updateLinkHandler)
-	api.DELETE("/link/:id", deleteLinkHandler)
+		var attemptToken Token
+		if err := DB.Where("token = ?", form.Key).Find(&attemptToken).Error; err != nil {
+			return err
+		}
+
+		if attemptToken.Token != form.Key {
+			return echo.NewHTTPError(http.StatusForbidden, "bad key")
+		}
+
+		return DB.Create(&Link{
+			ShortURL:      form.ShortURL,
+			LongURL:       form.LongURL,
+			NotifyOnVisit: form.Notify,
+		}).Error
+	})
 
 	// short link
 	e.GET("/:link", func(c echo.Context) error {
@@ -127,6 +121,10 @@ func main() {
 		link := c.Param("link")
 		chk := DB.Where("short_url = ?", link).Find(&result)
 		if chk.Error != nil {
+			return c.String(http.StatusInternalServerError, "internal server error")
+		}
+		err := recordLinkVisit(c.Request(), result.LinkID)
+		if err != nil {
 			return c.String(http.StatusInternalServerError, "internal server error")
 		}
 		if result.NotifyOnVisit {
@@ -141,27 +139,6 @@ func main() {
 			return c.Redirect(http.StatusPermanentRedirect, result.LongURL)
 		}
 	})
-
-	var user User
-	var count uint
-	DB.First(&user).Count(&count)
-	if count == 0 {
-		DB.Create(&User{
-			Username: "a",
-			Password: "a",
-			WebToken: uniuri.NewLen(32),
-		})
-	}
-	/*
-		for i := 0; i < 500; i++ {
-			DB.Create(&Link{
-				ParentUserID:  1,
-				ShortURL:      uniuri.NewLen(5),
-				LongURL:       "https://example.com/link/" + uniuri.NewLen(32),
-				NotifyOnVisit: false,
-			})
-		}
-	*/
 
 	e.Logger.Fatal(e.Start(config.Server.Address))
 }

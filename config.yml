@@ -67,4 +67,10 @@ notification:
       - "https://example.com/webhook/endpoint/2"
       - "https://example.com/webhook/endpoint/3"
 
+# (optional) Logging backend
+logging:
+  # Sentry (https://sentry.io)
+  sentry:
+    enabled: false
+    dsn: "https://username:password@sentry.io/42"
 

@@ -1,29 +1,35 @@
 package main
 
 import (
+	"gopkg.in/go-playground/validator.v9"
 	"time"
 )
 
 type GotifyConfig struct {
-	Enabled        bool   `yaml:"enable"`
+	Enabled        bool   `yaml:"enabled"`
 	Endpoint       string `yaml:"endpoint"`
 	ApplicationKey string `yaml:"application_key"`
 }
 
 type ServerChanConfig struct {
-	Enabled bool   `yaml:"enable"`
+	Enabled bool   `yaml:"enabled"`
 	ApiKey  string `yaml:"api_key"`
 }
 
 type TelegramConfig struct {
-	Enabled  bool   `yaml:"enable"`
+	Enabled  bool   `yaml:"enabled"`
 	BotToken string `yaml:"bot_token"`
 	ChatID   uint32 `yaml:"chat_id"`
 }
 
 type WebhooksConfig struct {
-	Enabled bool     `default:"" yaml:"enable"`
+	Enabled bool     `default:"" yaml:"enabled"`
 	URLs    []string `yaml:"urls"`
+}
+
+type SentryConfig struct {
+	Enabled bool   `default:"" yaml:"enabled"`
+	DSN     string `default:"" yaml:"dsn"`
 }
 
 // Config defines struct for the config file
@@ -49,37 +55,23 @@ type Config struct {
 		Telegram   TelegramConfig   `yaml:"telegram" provider:"telegram"`
 		Webhooks   WebhooksConfig   `yaml:"webhooks" provider:"webhooks"`
 	} `default:"" yaml:"notification"`
+	Logging struct {
+		Sentry SentryConfig `yaml:"sentry"`
+	} `default:"" yaml:"logging"`
 }
 
-// User stores short link users
-type User struct {
-	UserID    uint       `gorm:"AUTO_INCREMENT;primary_key" json:"user_id"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
-	DeletedAt *time.Time `gorm:"index" json:"deleted_at"`
-	Username  string     `gorm:"type:varchar(64);unique_index" json:"long"`
-	Password  string     `gorm:"type:varchar(128)" json:"password"`
-	WebToken  string     `gorm:"type:varchar(32);unique_index" json:"web_token"`
-	Tokens    []Token    `gorm:"foreignkey:TokenID"`
-	Links     []Link     `gorm:"foreignkey:LinkID"`
-}
-
-// Token stores user tokens
+// Token stores API tokens
 type Token struct {
-	TokenID      uint      `gorm:"AUTO_INCREMENT;primary_key" json:"token_id"`
-	CreatedAt    time.Time `json:"created_at"`
-	ParentUserID uint      `json:"-"`
-	Token        string    `gorm:"type:varchar(32);unique_index" json:"token"`
-	Description  string    `gorm:"type:varchar(256)" json:"description"`
+	Token       string `gorm:"type:varchar(32);unique_index" json:"token"`
+	Description string `gorm:"type:varchar(256)" json:"description"`
 }
 
 // Link defines struct for the mapping between the short link and the original (long) link
 type Link struct {
-	LinkID       uint       `gorm:"AUTO_INCREMENT;primary_key" json:"link_id"`
-	ParentUserID uint       `json:"-"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
-	DeletedAt    *time.Time `gorm:"index" json:"-"`
+	LinkID    uint       `gorm:"AUTO_INCREMENT;primary_key" json:"link_id"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	DeletedAt *time.Time `gorm:"index" json:"-"`
 	// ShortURL is the short link id
 	ShortURL string `gorm:"type:varchar(20);unique_index" json:"short_url"`
 	// LongURL is the original (long) link URI
@@ -92,29 +84,20 @@ type Link struct {
 
 // LinkRecord records all visits to the links
 type LinkRecord struct {
-	RecordID         uint      `gorm:"AUTO_INCREMENT;primary_key" json:"record_id"`
-	CreatedAt        time.Time `json:"created_at"`
-	ParentLinkID     uint      `json:"-"`
-	Referer          string    `json:"referer"`
-	EncodedUserAgent uint      `json:"user_agent"`
+	RecordID     uint      `gorm:"AUTO_INCREMENT;primary_key" json:"record_id"`
+	CreatedAt    time.Time `json:"created_at"`
+	ParentLinkID uint      `json:"-"`
+	Referer      string    `gorm:"type:text" json:"referer"`
+	UserAgent    string    `gorm:"type:text" json:"user_agent"`
 }
 
-// ResponseLogin returns login response
-type ResponseLogin struct {
-	Username string `json:"username"`
-	WebToken string `json:"token"`
+type NewLinkForm struct {
+	Key      string `form:"key" validate:"required"`
+	ShortURL string `form:"short_url" validate:"required"`
+	LongURL  string `form:"long_url" validate:"required"`
+	Notify   bool   `form:"notify" validate:"required"`
 }
 
-// AdminLoginForm indicates an expected admin login form
-type AdminLoginForm struct {
-	Username          string `form:"username"`
-	PasswordKey       string `form:"key"`
-	EncryptedPassword string `form:"password"`
-}
-
-type QueryLinkParams struct {
-	Page      int    `query:"page"`
-	Limit     int    `query:"limit"`
-	SortField string `query:"sort_field"`
-	SortOrder string `query:"sort_order"`
+type CustomValidator struct {
+	validator *validator.Validate
 }
